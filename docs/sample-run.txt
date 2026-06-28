@@ -1,0 +1,5 @@
+  [OK] gpt4o-eastus-prod                    4/4 cases passed  (100%)
+  [OK] gpt4o-mini-bulk                      4/4 cases passed  (100%)
+  [OK] gpt4o-westeurope-failover            4/4 cases passed  (100%)
+
+  Backend: stub

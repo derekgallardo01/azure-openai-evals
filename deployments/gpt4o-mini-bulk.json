@@ -1,0 +1,18 @@
+{
+  "name": "gpt4o-mini-bulk",
+  "model": "gpt-4o-mini",
+  "model_version": "2024-07-18",
+  "region": "eastus",
+  "capacity_tpm": 100000,
+  "content_filter": {
+    "hate": "high",
+    "sexual": "high",
+    "violence": "high",
+    "self_harm": "high",
+    "jailbreak_detection": true,
+    "protected_material_detection": true
+  },
+  "sla_p95_latency_ms": 800,
+  "monthly_budget_usd": 100.0,
+  "notes": "Bulk classification + extraction work. Higher capacity, stricter content filter, lower budget per token but bulk volume."
+}

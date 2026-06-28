@@ -1,0 +1,221 @@
+name: Deploy live demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: pip install --quiet -e .
+
+      - name: Generate the static demo report
+        run: |
+          mkdir -p site
+          python - <<'PY'
+          import html, json, sys
+          from dataclasses import asdict
+          from pathlib import Path
+          sys.path.insert(0, "src")
+          from aoai_evals.deployment import list_deployments, default_deployments_dir
+          from aoai_evals.evaluator import evaluate_deployment, project_monthly_cost, measure_latency
+
+          deployments = list_deployments(default_deployments_dir())
+          EVALS_DIR = Path("evals")
+          report_cards = []
+          for d in deployments:
+              eval_file = EVALS_DIR / f"{d.name}.json"
+              cases = json.loads(eval_file.read_text())["cases"] if eval_file.exists() else []
+              report = evaluate_deployment(d, cases) if cases else None
+              cost_proj = project_monthly_cost(d, monthly_calls=10000,
+                                                avg_input_tokens=500, avg_output_tokens=200)
+              latency = measure_latency(d, prompt="Hello", samples=10)
+              report_cards.append({"d": d, "report": report,
+                                    "cost": cost_proj, "latency": latency})
+
+          def render_eval_rows(report):
+              if not report:
+                  return "<tr><td colspan='3' style='color:#999'>(no eval cases bundled)</td></tr>"
+              rows = ""
+              for c in report.cases:
+                  status_class = "pass" if c.passed else "fail"
+                  status = "PASS" if c.passed else "FAIL"
+                  rows += f"""
+                    <tr>
+                      <td class="case-id">{html.escape(c.case_id)}</td>
+                      <td class="status {status_class}">{status}</td>
+                      <td class="detail">{html.escape(c.detail)}</td>
+                    </tr>
+                  """
+              return rows
+
+          def card(item):
+              d = item["d"]
+              report = item["report"]
+              cost = item["cost"]
+              latency = item["latency"]
+
+              cf = d.content_filter
+              cf_summary = (f"hate={cf.hate} / sexual={cf.sexual} / "
+                            f"violence={cf.violence} / self_harm={cf.self_harm}")
+
+              eval_summary = ""
+              if report:
+                  pass_rate_pct = int(report.pass_rate * 100)
+                  cls = "pass" if report.pass_rate == 1.0 else "fail"
+                  eval_summary = f'<span class="pill {cls}">{report.passed}/{report.total} ({pass_rate_pct}%)</span>'
+
+              cost_cls = "fail" if cost.over_budget else "pass"
+              cost_text = (f"${cost.monthly_cost_usd:.2f}/mo at 10k calls "
+                           f"of avg 500in/200out vs budget ${cost.budget_usd:.2f}")
+              lat_cls = "pass" if latency.p95_under_sla else "fail"
+              lat_text = (f"p50 {latency.p50_ms}ms, p95 {latency.p95_ms}ms, "
+                          f"p99 {latency.p99_ms}ms vs SLA {latency.sla_p95_ms}ms")
+
+              return f"""
+                <div class="card">
+                  <div class="card-header">
+                    <span class="kicker">deployment</span>
+                    <h2>{html.escape(d.name)}</h2>
+                  </div>
+                  <div class="config">
+                    <div><strong>Model:</strong> <code>{html.escape(d.model)}</code> ({html.escape(d.model_version)})</div>
+                    <div><strong>Region:</strong> <code>{html.escape(d.region)}</code></div>
+                    <div><strong>Capacity:</strong> {d.capacity_tpm:,} tpm</div>
+                    <div><strong>Content filter:</strong> {cf_summary}</div>
+                  </div>
+                  <div class="kicker">Eval results {eval_summary}</div>
+                  <table>{render_eval_rows(report)}</table>
+                  <div class="kicker">Cost projection <span class="pill {cost_cls}">{('over' if cost.over_budget else 'under')} budget</span></div>
+                  <div class="metric">{cost_text}</div>
+                  <div class="kicker">Latency baseline <span class="pill {lat_cls}">{('over' if not latency.p95_under_sla else 'under')} SLA</span></div>
+                  <div class="metric">{lat_text}</div>
+                </div>
+              """
+
+          page = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Azure OpenAI evals - live demo</title>
+            <style>
+              :root {{
+                --primary: #0078d4; --accent: #50e6ff;
+                --bg: #f0f9ff; --border: #bae6fd;
+                --ink: #082f49; --muted: #475569;
+                --pass: #047857; --fail: #b91c1c;
+              }}
+              * {{ box-sizing: border-box; }}
+              body {{
+                margin: 0; font-family: 'Segoe UI', system-ui, sans-serif;
+                background: var(--bg); color: var(--ink); line-height: 1.5;
+              }}
+              .hero {{
+                background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+                color: white; padding: 50px 24px 60px;
+              }}
+              .hero-inner {{ max-width: 1000px; margin: 0 auto; }}
+              .hero .kicker {{ font-size: 13px; letter-spacing: 2px; opacity: .75; text-transform: uppercase; }}
+              .hero h1 {{ font-size: 38px; margin: 10px 0 14px; line-height: 1.1; }}
+              .hero p {{ font-size: 17px; margin: 0; opacity: .92; max-width: 760px; }}
+              .container {{ max-width: 1000px; margin: -30px auto 60px; padding: 0 24px; }}
+              .card {{
+                background: white; border: 1px solid var(--border); border-radius: 12px;
+                padding: 22px 26px; margin: 16px 0;
+                box-shadow: 0 1px 3px rgba(0, 120, 212, .08);
+              }}
+              .card-header {{ display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }}
+              .card h2 {{ margin: 4px 0; font-size: 22px; }}
+              .kicker {{
+                font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+                color: var(--accent); font-weight: 700; margin: 14px 0 6px;
+                display: flex; align-items: center; gap: 10px;
+              }}
+              .config {{
+                background: #e0f2fe; padding: 12px 14px; border-radius: 6px;
+                font-size: 13px; margin: 10px 0; line-height: 1.7;
+              }}
+              .config code {{
+                background: white; padding: 2px 6px; border-radius: 4px;
+                color: var(--primary); font-weight: 600;
+              }}
+              table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+              td {{ padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }}
+              td.case-id {{ font-family: Consolas, monospace; width: 35%; color: var(--ink); }}
+              td.status {{ width: 60px; font-weight: 700; }}
+              td.status.pass {{ color: var(--pass); }}
+              td.status.fail {{ color: var(--fail); }}
+              td.detail {{ color: var(--muted); }}
+              .pill {{
+                padding: 2px 10px; border-radius: 12px; font-size: 11px;
+                font-weight: 700; letter-spacing: 0.5px;
+              }}
+              .pill.pass {{ background: #d1fae5; color: var(--pass); }}
+              .pill.fail {{ background: #fee2e2; color: var(--fail); }}
+              .metric {{ font-size: 13px; color: var(--ink); margin: 6px 0 4px; font-family: Consolas, monospace; }}
+              .footer {{
+                margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border);
+                color: var(--muted); font-size: 13px; text-align: center;
+              }}
+              .footer code {{ background: #e0f2fe; padding: 2px 6px; border-radius: 4px; }}
+              a {{ color: var(--primary); }}
+            </style>
+          </head>
+          <body>
+            <div class="hero">
+              <div class="hero-inner">
+                <div class="kicker">Azure OpenAI &middot; Deployment Readiness &middot; Eval-Gated</div>
+                <h1>Azure OpenAI evals - live demo</h1>
+                <p>Three bundled deployments (primary, failover, bulk) with their
+                full configuration, the eval suite running against each one
+                (content filter, latency, cost rubrics), monthly cost
+                projection at a sample volume, and a 10-sample latency
+                baseline vs SLA. Default backend is a deterministic stub - one
+                env var swaps to the live Azure OpenAI service.</p>
+              </div>
+            </div>
+
+            <div class="container">
+              {''.join(card(i) for i in report_cards)}
+
+              <div class="footer">
+                Regenerated on every push from the stub backend.
+                Install: <code>pip install -e .</code> then <code>aoai-evals demo</code>.<br>
+                Source: <a href="https://github.com/derekgallardo01/azure-openai-evals">github.com/derekgallardo01/azure-openai-evals</a>
+              </div>
+            </div>
+          </body>
+          </html>
+          """
+          with open("site/index.html", "w", encoding="utf-8") as fh:
+              fh.write(page)
+          print("wrote site/index.html")
+          PY
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

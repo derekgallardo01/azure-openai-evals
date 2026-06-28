@@ -1,0 +1,27 @@
+[project]
+name = "aoai-evals"
+version = "1.0.0"
+description = "Azure OpenAI deployment readiness + evaluation kit. Rubrics tuned to Azure-specific concerns: content filter triggers, structured output JSON-schema conformance, per-deployment cost projection, regional latency baselines. Stub-by-default so the kit runs anywhere without an Azure subscription; one env var swaps to the live Azure OpenAI service."
+authors = [{name = "Derek Gallardo", email = "derekgallardo01@gmail.com"}]
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+azure = [
+    "openai>=1.50.0",
+]
+
+[project.scripts]
+aoai-evals = "aoai_evals.cli:main"
+
+[project.urls]
+Repository = "https://github.com/derekgallardo01/azure-openai-evals"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

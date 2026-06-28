@@ -1,0 +1,12 @@
+{
+  "repo": "azure-openai-evals",
+  "title": "Azure OpenAI Evals",
+  "tagline": "Azure OpenAI deployment readiness + eval kit. Rubrics tuned to Azure-specific concerns (content filter triggers, structured output JSON-schema conformance, per-deployment cost projection, regional latency baselines). Stub-by-default; one env var swaps to live Azure.",
+  "kicker": "Azure OpenAI · Deployment Readiness · Eval-Gated · Capability Demo",
+  "features": [
+    {"label": "Rubrics", "value": "6 (3 Azure-specific)"},
+    {"label": "Deployments", "value": "3 bundled examples"},
+    {"label": "Tests + Evals", "value": "37 pytest + 12 golden"}
+  ],
+  "theme": {"primary": "#0078d4", "accent": "#50e6ff"}
+}
