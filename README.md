@@ -54,6 +54,14 @@ docker run --rm aoai-evals pytest -q                          # tests
 docker run --rm aoai-evals aoai-evals cost gpt4o-mini-bulk --calls 1000000 --in 200 --out 30
 ```
 
+## Example: production scenario
+
+**[examples/preflight_gate.py](examples/preflight_gate.py)** — 4-step deployment-readiness gate as one script: validate + eval + cost projection + latency baseline per deployment. Exit 0 if all checks pass
+
+```bash
+python examples/preflight_gate.py
+```
+
 ## What it's for
 
 Every Azure OpenAI deployment has the same questions before going live:
